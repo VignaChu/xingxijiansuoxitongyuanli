@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <title>文档搜索</title>
+</head>
+<body>
+    <h2>文档搜索</h2>
+    <form id="searchForm">
+        <input type="text" name="query" placeholder="请输入文档名或关键词" required>
+        <button type="submit">搜索</button>
+    </form>
+    <!-- 查询日志区域 -->
+    <div id="queryLog" style="margin:10px 0; color: #888;">
+        <strong>查询日志：</strong>
+        <ul id="queryLogList" style="margin:0; padding-left:20px;"></ul>
+    </div>
+    <div id="results"></div>
+    <script>
+        // 查询日志功能
+        function addQueryLog(query) {
+            const logList = document.getElementById('queryLogList');
+            const li = document.createElement('li');
+            li.textContent = query;
+            logList.insertBefore(li, logList.firstChild);
+            // 最多显示10条
+            while (logList.children.length > 10) logList.removeChild(logList.lastChild);
+        }
+
+        document.getElementById('searchForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const query = this.query.value;
+            addQueryLog(query); // 添加到查询日志
+            const resp = await fetch('/filesearch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({query})
+            });
+            const res = await resp.json();
+            let html = '';
+            if (res.hits && res.hits.length) {
+                html = res.hits.map(item => `
+                    <div>
+                        <h3><a href="/snapshot/${item.html_filename}" target="_blank">${item.title}</a></h3>
+                        <p>${item.content}</p>
+                        <p><a href="${item.url}" target="_blank">${item.url}</a></p>
+                        ${item.files ? '<p>相关文件：' + item.files.map(f => `<a href="/snapshot/${f}" target="_blank">${f}</a>`).join(', ') + '</p>' : ''}
+                    </div>
+                `).join('');
+            } else {
+                html = '<p>没有搜索结果</p>';
+            }
+            document.getElementById('results').innerHTML = html;
+        };
+    </script>
+    <p>
+        <a href="/site_search.html">站内搜索</a> |
+        <a href="/phrase_search.html">短语搜索</a> |
+        <a href="/wildcard_search.html">通配符搜索</a> |
+        <a href="/logout" onclick="fetch('/logout', {method:'POST'}).then(()=>location.href='/login');return false;">退出登录</a>
+    </p>
+</body>
+</html>

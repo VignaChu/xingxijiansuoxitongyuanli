@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <title>站内搜索</title>
+    <style>
+        #suggestBox {
+            border: 1px solid #ccc;
+            background: #fff;
+            position: absolute;
+            z-index: 100;
+            max-height: 180px;
+            overflow-y: auto;
+            min-width: 200px;
+            display: none;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #suggestBox li {
+            padding: 4px 10px;
+            cursor: pointer;
+        }
+        #suggestBox li:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h2>站内搜索</h2>
+    <form id="searchForm">
+        <input type="text" name="query" placeholder="请输入搜索内容" required>
+        <button type="submit">搜索</button>
+    </form>
+    <!-- 用户历史查询区域 -->
+    <div id="historyLog" style="margin:10px 0; color: #888;">
+        <strong>历史查询：</strong>
+        <ul id="historyLogList" style="margin:0; padding-left:20px;"></ul>
+    </div>
+    <div id="results"></div>
+    <ul id="suggestBox"></ul>
+    <script>
+        // 获取用户历史查询
+        async function loadHistory() {
+            const resp = await fetch('/user');
+            if (resp.ok) {
+                const html = await resp.text();
+                // 简单提取历史（假设user_page.html渲染了search_history）
+                // 推荐后端加个API专门返回JSON格式的历史
+                try {
+                    const user = JSON.parse(html);
+                    showHistory(user.search_history || []);
+                } catch {
+                    // 如果不是json，说明不是API，忽略
+                }
+            }
+        }
+        // 推荐更优方式：后端加API
+        async function loadHistoryApi() {
+            const resp = await fetch('/user_history');
+            if (resp.ok) {
+                const data = await resp.json();
+                showHistory(data.history || []);
+            }
+        }
+        function showHistory(history) {
+            const logList = document.getElementById('historyLogList');
+            logList.innerHTML = '';
+            history.slice(-5).reverse().forEach(q => {
+                const li = document.createElement('li');
+                li.textContent = q;
+                logList.appendChild(li);
+            });
+        }
+        // 页面加载时获取历史
+        // loadHistory(); // 如果/user返回json
+        loadHistoryApi(); // 推荐用API
+
+        document.getElementById('searchForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const query = this.query.value;
+            const resp = await fetch('/sitesearch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({query})
+            });
+            const res = await resp.json();
+            let html = '';
+            if (res.hits && res.hits.length) {
+                html = res.hits.map(item => `
+                    <div>
+                        <h3><a href="/snapshot/${item.html_filename}" target="_blank">${item.title}</a></h3>
+                        <p>${item.content}</p>
+                        <p><a href="${item.url}" target="_blank">${item.url}</a></p>
+                    </div>
+                `).join('');
+            } else {
+                html = '<p>没有搜索结果</p>';
+            }
+            document.getElementById('results').innerHTML = html;
+            // 搜索后刷新历史
+            loadHistoryApi();
+        };
+
+        const input = document.querySelector('input[name="query"]');
+        const suggestBox = document.getElementById('suggestBox');
+
+        // 自动补全
+        input.addEventListener('input', async function() {
+            const q = this.value.trim();
+            if (!q) {
+                suggestBox.style.display = 'none';
+                return;
+            }
+            const resp = await fetch('/suggest?q=' + encodeURIComponent(q));
+            const data = await resp.json();
+            if (data.suggestions && data.suggestions.length) {
+                suggestBox.innerHTML = data.suggestions.map(s => `<li>${s}</li>`).join('');
+                // 定位建议框
+                const rect = input.getBoundingClientRect();
+                suggestBox.style.position = 'absolute';
+                suggestBox.style.left = rect.left + 'px';
+                suggestBox.style.top = (rect.bottom + window.scrollY) + 'px';
+                suggestBox.style.width = rect.width + 'px';
+                suggestBox.style.display = 'block';
+            } else {
+                suggestBox.style.display = 'none';
+            }
+        });
+
+        // 点击建议填充输入框
+        suggestBox.addEventListener('mousedown', function(e) {
+            if (e.target.tagName === 'LI') {
+                input.value = e.target.textContent;
+                suggestBox.style.display = 'none';
+                input.focus();
+            }
+        });
+
+        // 失去焦点隐藏建议
+        input.addEventListener('blur', function() {
+            setTimeout(() => suggestBox.style.display = 'none', 200);
+        });
+    </script>
+    <p>
+        <a href="/phrase_search.html">短语搜索</a> |
+        <a href="/wildcard_search.html">通配符搜索</a> |
+        <a href="/file_search.html">文档搜索</a> |
+        <a href="/logout" onclick="fetch('/logout', {method:'POST'}).then(()=>location.href='/login');return false;">退出登录</a>
+    </p>
+</body>
+</html>

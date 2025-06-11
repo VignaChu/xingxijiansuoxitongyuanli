@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <title>短语搜索</title>
+    <style>
+        #suggestBox {
+            border: 1px solid #ccc;
+            background: #fff;
+            position: absolute;
+            z-index: 100;
+            max-height: 180px;
+            overflow-y: auto;
+            min-width: 200px;
+            display: none;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #suggestBox li {
+            padding: 4px 10px;
+            cursor: pointer;
+        }
+        #suggestBox li:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h2>短语搜索</h2>
+    <form id="searchForm">
+        <input type="text" name="query" placeholder="请输入短语" required>
+        <button type="submit">搜索</button>
+    </form>
+    <div id="results"></div>
+    <ul id="suggestBox"></ul>
+    <script>
+        document.getElementById('searchForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const query = this.query.value;
+            const resp = await fetch('/phrasesearch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({query})
+            });
+            const res = await resp.json();
+            let html = '';
+            if (res.hits && res.hits.length) {
+                html = res.hits.map(item => `
+                    <div>
+                        <h3><a href="/snapshot/${item.html_filename}" target="_blank">${item.title}</a></h3>
+                        <p>${item.content}</p>
+                        <p><a href="${item.url}" target="_blank">${item.url}</a></p>
+                    </div>
+                `).join('');
+            } else {
+                html = '<p>没有搜索结果</p>';
+            }
+            document.getElementById('results').innerHTML = html;
+        };
+
+const input = document.querySelector('input[name="query"]');
+const suggestBox = document.getElementById('suggestBox');
+
+// 自动补全
+input.addEventListener('input', async function() {
+    const q = this.value.trim();
+    if (!q) {
+        suggestBox.style.display = 'none';
+        return;
+    }
+    const resp = await fetch('/suggest?q=' + encodeURIComponent(q));
+    const data = await resp.json();
+    if (data.suggestions && data.suggestions.length) {
+        suggestBox.innerHTML = data.suggestions.map(s => `<li>${s}</li>`).join('');
+        // 定位建议框
+        const rect = input.getBoundingClientRect();
+        suggestBox.style.position = 'absolute';
+        suggestBox.style.left = rect.left + 'px';
+        suggestBox.style.top = (rect.bottom + window.scrollY) + 'px';
+        suggestBox.style.width = rect.width + 'px';
+        suggestBox.style.display = 'block';
+    } else {
+        suggestBox.style.display = 'none';
+    }
+});
+
+// 点击建议填充输入框
+suggestBox.addEventListener('mousedown', function(e) {
+    if (e.target.tagName === 'LI') {
+        input.value = e.target.textContent;
+        suggestBox.style.display = 'none';
+        input.focus();
+    }
+});
+
+// 失去焦点隐藏建议
+input.addEventListener('blur', function() {
+    setTimeout(() => suggestBox.style.display = 'none', 200);
+});
+    </script>
+    <p>
+        <a href="/site_search.html">站内搜索</a> |
+        <a href="/wildcard_search.html">通配符搜索</a> |
+        <a href="/file_search.html">文档搜索</a> |
+        <a href="/logout" onclick="fetch('/logout', {method:'POST'}).then(()=>location.href='/login');return false;">退出登录</a>
+    </p>
+</body>
+</html>
